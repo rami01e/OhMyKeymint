@@ -124,15 +124,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y protobuf-compiler
 
-    - name: Download BoringSSL
+    - name: Download BoringSSL (arm64-v8a)
       uses: actions/download-artifact@v8
       with:
-        name: boringssl.tar.gz
+        name: boringssl-arm64-v8a
         path: .
 
     - name: Configure Cargo for Android target
       run: |
-        tar xf boringssl.tar.gz
+        tar xf boringssl-arm64-v8a.tar.gz
         python scripts/setup_cargo_config.py \
           --force \
           --ndk-root "$ANDROID_SDK_ROOT/ndk/30.0.16248370" \
