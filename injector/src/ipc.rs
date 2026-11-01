@@ -1,5 +1,6 @@
 use crate::android::security::keystore::IKeyAttestationApplicationIdProvider::IKeyAttestationApplicationIdProvider;
 use crate::filter::PackageResolution;
+use crate::top::qwq2333::ohmykeymint::CallerInfo::CallerInfo;
 use crate::top::qwq2333::ohmykeymint::IOhMyAuthorizationService::IOhMyAuthorizationService;
 use crate::top::qwq2333::ohmykeymint::IOhMyKsService::IOhMyKsService;
 use crate::top::qwq2333::ohmykeymint::IOhMyMaintenanceService::IOhMyMaintenanceService;
@@ -256,15 +257,46 @@ where
     }
 }
 
-pub fn resolve_packages_for_uid(uid: u32) -> PackageResolution {
+pub fn resolve_packages_for_caller(caller: &CallerInfo) -> (u32, PackageResolution) {
     ensure_process_state();
-    match resolve_package_names_for_uid(uid) {
+    let uid = caller.uid as u32;
+    let package_uid =
+        match non_isolated_package_uid(uid, kmr_common::android_version::android_major_version()) {
+            Some(uid) => Some(uid),
+            None => match with_omk_once(|omk| {
+                Ok(u32::try_from(omk.r#getIsolatedOwnerUid(Some(caller))?).ok())
+            }) {
+                Ok(owner) => owner,
+                Err(error) => {
+                    warn!(
+                        "failed to resolve isolated caller uid={} pid={}: {error:#}",
+                        uid, caller.pid
+                    );
+                    None
+                }
+            },
+        };
+    let Some(package_uid) = package_uid else {
+        return (uid, PackageResolution::Unknown);
+    };
+    let resolution = match resolve_package_names_for_uid(package_uid) {
         Ok(packages) if packages.is_empty() => PackageResolution::Unknown,
         Ok(packages) => PackageResolution::Known(packages),
         Err(error) => {
-            warn!("failed to resolve packages for uid {}: {:#}", uid, error);
+            warn!("failed to resolve packages for uid {}: {:#}", package_uid, error);
             PackageResolution::Unknown
         }
+    };
+    (package_uid, resolution)
+}
+
+fn non_isolated_package_uid(uid: u32, android_major: Option<i32>) -> Option<u32> {
+    // AOSP Process.getAppUidForSdkSandboxUid/getAppUidForPrivateComputeCoreUid.
+    match uid % kmr_common::consts::AID_USER_OFFSET {
+        90_000..=99_999 => None,
+        20_000..=29_999 if android_major.is_some_and(|version| version >= 13) => Some(uid - 10_000),
+        30_000..=39_999 if android_major.is_some_and(|version| version >= 17) => Some(uid - 20_000),
+        _ => Some(uid),
     }
 }
 
