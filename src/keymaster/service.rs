@@ -845,4 +845,15 @@ impl IOhMyKsService for KeystoreService {
         let ctx = Some(require_omk_ctx(ctx, "IOhMyKsService::isOmkGrant")?);
         self.is_omk_grant(ctx, grant).map_err(into_logged_binder)
     }
+
+    fn getIsolatedOwnerUid(&self, ctx: Option<&CallerInfo>) -> Result<i32, Status> {
+        let _wp = wd::watch("IOhMyKsService::getIsolatedOwnerUid");
+        let ctx = require_omk_ctx(ctx, "IOhMyKsService::getIsolatedOwnerUid")?;
+        let (Ok(uid), Ok(pid)) = (u32::try_from(ctx.uid), i32::try_from(ctx.pid)) else {
+            return Ok(-1);
+        };
+        crate::plat::resetprop::runtime_get_isolated_owner_uid(uid, pid)
+            .map(|owner| owner.and_then(|uid| i32::try_from(uid).ok()).unwrap_or(-1))
+            .map_err(into_logged_binder)
+    }
 }
